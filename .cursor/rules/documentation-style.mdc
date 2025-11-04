@@ -1,0 +1,143 @@
+---
+globs: *.md
+alwaysApply: false
+---
+
+# Documentation Style Guidelines
+
+## Overview
+
+Follow these guidelines for all documentation in the project to ensure clean, readable, and consistent documentation.
+
+## Core Principles
+
+- No bold or italic formatting - use plain text only
+- Prefer bullet points and numbered lists over paragraphs
+- Keep content brief but precise and clean
+- Write in clear, direct language without excessive formatting
+- Focus on substance over style - let the content speak for itself
+- Use headings and clear structure
+- Shorter sentences are better than longer sentences
+- Bullet points are better than paragraphs
+- Minimize code examples since we work inside the codebase
+- Assume reader is aware of project context
+
+## Writing Style
+
+### Good Examples
+
+```markdown
+# ✅ GOOD - Clean, natural writing
+
+User can upload product images through the admin interface.
+The system validates file format and size before processing.
+
+Configuration files are stored in the functions/config directory.
+Each supplier has its own mapping configuration.
+```
+
+### Avoid Examples
+
+```markdown
+# ❌ AVOID - Over-formatted text
+
+**User** can upload _product images_ through the **admin interface**.
+The system **validates** file format and size before **processing**.
+
+Configuration files are stored in the `functions/config` directory.
+Each supplier has its own mapping configuration.
+```
+
+## Structure Guidelines
+
+- Use clear headings for sections
+- Prefer lists over paragraphs
+- Keep sections focused and concise
+- Use numbered lists for sequential processes
+- Use bullet points for related items
+
+## Content Guidelines
+
+- Assume reader understands project context
+- Focus on what's unique or important
+- Avoid redundant explanations
+- Minimize code examples unless essential
+- Prefer references to existing code over examples
+
+## Application
+
+Apply these guidelines to:
+- PRD documents
+- Technical documentation
+- README files
+- Configuration documentation
+- Process descriptions
+# Documentation Style Guidelines
+
+## Overview
+
+Follow these guidelines for all documentation in the project to ensure clean, readable, and consistent documentation.
+
+## Core Principles
+
+- No bold or italic formatting - use plain text only
+- Prefer bullet points and numbered lists over paragraphs
+- Keep content brief but precise and clean
+- Write in clear, direct language without excessive formatting
+- Focus on substance over style - let the content speak for itself
+- Use headings and clear structure
+- Shorter sentences are better than longer sentences
+- Bullet points are better than paragraphs
+- Minimize code examples since we work inside the codebase
+- Assume reader is aware of project context
+
+## Writing Style
+
+### Good Examples
+
+```markdown
+# ✅ GOOD - Clean, natural writing
+
+User can upload product images through the admin interface.
+The system validates file format and size before processing.
+
+Configuration files are stored in the functions/config directory.
+Each supplier has its own mapping configuration.
+```
+
+### Avoid Examples
+
+```markdown
+# ❌ AVOID - Over-formatted text
+
+**User** can upload _product images_ through the **admin interface**.
+The system **validates** file format and size before **processing**.
+
+Configuration files are stored in the `functions/config` directory.
+Each supplier has its own mapping configuration.
+```
+
+## Structure Guidelines
+
+- Use clear headings for sections
+- Prefer lists over paragraphs
+- Keep sections focused and concise
+- Use numbered lists for sequential processes
+- Use bullet points for related items
+
+## Content Guidelines
+
+- Assume reader understands project context
+- Focus on what's unique or important
+- Avoid redundant explanations
+- Minimize code examples unless essential
+- Prefer references to existing code over examples
+
+## Application
+
+Apply these guidelines to:
+- PRD documents
+- Technical documentation
+- README files
+- Configuration documentation
+- Process descriptions

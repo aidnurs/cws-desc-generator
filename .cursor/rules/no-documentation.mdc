@@ -1,0 +1,24 @@
+---
+alwaysApply: true
+---
+# No Additional Documentation
+
+## Rule Description
+Do not create additional documentation files unless explicitly requested by the user. This includes README files, documentation files, or any other explanatory documents.
+
+## What NOT to Create
+- README.md files
+- Documentation files (*.md)
+- Guide files
+- Tutorial files
+- Setup instructions
+- API documentation
+- User manuals
+- Any explanatory text files
+
+## What TO Do Instead
+- Focus on the actual code implementation
+- Provide clear, concise code comments when necessary
+- Use descriptive variable and function names
+- Write self-documenting code
+- Only create documentation when explicitly asked by the user

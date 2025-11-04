@@ -1,0 +1,31 @@
+---
+description: When running any Python commands in terminal
+globs: 
+alwaysApply: false
+---
+# Terminal Commands
+
+## Virtual Environment Usage
+When running any Python commands in terminal, always activate the virtual environment first:
+
+### Template
+```bash
+source venv/bin/activate && [python-command]
+```
+
+### Examples
+```bash
+# Running tests
+source venv/bin/activate && python -m pytest tests/test_categories_service.py -v
+
+# Running Python scripts  
+source venv/bin/activate && python -m scripts.firestore_cli
+
+# Installing packages
+source venv/bin/activate && pip install package-name
+```
+
+### Rationale
+- Ensures consistent Python environment and dependencies
+- Prevents issues with system Python vs project Python
+- Maintains isolation from global Python packages

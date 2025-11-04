@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+# No Emojis in Code
+
+## Rule Description
+Never use emojis in code, comments, or log messages. Use plain text indicators instead.
