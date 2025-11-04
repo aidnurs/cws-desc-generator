@@ -291,11 +291,12 @@ export default function Home() {
               />
             </div>
 
-            <div>
+            {/* <div>
               <button
                 type="button"
                 onClick={() => setShowUserPrompt(!showUserPrompt)}
                 className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
+                disabled={true}
               >
                 <span
                   className="transform transition-transform duration-200"
@@ -307,7 +308,7 @@ export default function Home() {
                 >
                   ▶
                 </span>
-                User Prompt (Advanced)
+                User Prompt (Future Feature)
               </button>
               {showUserPrompt && (
                 <div className="mt-3 animate-fadeIn">
@@ -319,10 +320,11 @@ export default function Home() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                     placeholder="User prompt for AI"
                     rows={4}
+                    disabled={true}
                   />
                 </div>
               )}
-            </div>
+            </div> */}
 
             <div className="flex gap-3 items-center pt-2">
               <button

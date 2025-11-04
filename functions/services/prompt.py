@@ -28,12 +28,12 @@ def get_system_prompt() -> str:
         Keywords are optional. If you will receive two sets of keywords:
 
         1. Main Keywords:
-        – Use all main keywords a total of 15-20 times throughout the description
+        – Use all main keywords a total of 15-20 times throughout the description. Do not use more than 20 times.
         – Primary main keyword: 7-10 occurrences
         – Main keyword variations: 7-10 occurrences combined
 
         2. Extra Keywords:
-        – Use all extra keywords a total of 15-20 times throughout the description
+        – Use all extra keywords a total of 15-20 times throughout the description. Do not use more than 20 times.
         – Distribute naturally; do not cluster or force keywords
 
         KEYWORD COUNTING RULES:
