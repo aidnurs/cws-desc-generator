@@ -1,31 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { KeywordTable } from "@/components/KeywordTable";
-import { CSVImport } from "@/components/CSVImport";
+import { useState } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import {
-  countKeywordOccurrences,
-  calculateStats,
-  exportToJSON,
-} from "@/utils/keywords";
-import {
-  AppState,
-  Keyword,
-  EXTENSION_NAME_MIN_LENGTH,
-  EXTENSION_NAME_MAX_LENGTH,
-  SHORT_DESC_MIN_LENGTH,
-  SHORT_DESC_MAX_LENGTH,
-} from "@/types";
+import { getDensityColor } from "@/utils/keywords";
+import { AppState, AnalysisResult } from "@/types";
 import { API_ENDPOINTS } from "@/config/api";
 
 const INITIAL_STATE: AppState = {
-  mainKeywords: [],
-  extraKeywords: [],
-  extensionName: "",
-  shortDescription: "",
-  userPrompt: "",
-  generatedText: "",
+  text: "",
+  analysisResult: null,
+  turgenevResult: null,
 };
 
 export default function Home() {
@@ -33,123 +17,121 @@ export default function Home() {
     "app-state",
     INITIAL_STATE
   );
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isCheckingSpam, setIsCheckingSpam] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showUserPrompt, setShowUserPrompt] = useState(false);
-  const [showCleanModal, setShowCleanModal] = useState(false);
-  const [showKeywords, setShowKeywords] = useState(true);
+  const [spamError, setSpamError] = useState("");
+  const [activeTab, setActiveTab] = useState<"keywords" | "phrases">(
+    "keywords"
+  );
 
-  useEffect(() => {
-    if (!state.generatedText) return;
+  const safeState = {
+    text: state?.text ?? "",
+    analysisResult: state?.analysisResult ?? null,
+    turgenevResult: state?.turgenevResult ?? null,
+  };
 
-    const updateKeywords = (keywords: Keyword[]) =>
-      keywords.map((k) => ({
-        ...k,
-        timesUsed: countKeywordOccurrences(state.generatedText, k.key),
-      }));
-
-    const updatedMainKeywords = updateKeywords(state.mainKeywords);
-    const updatedExtraKeywords = updateKeywords(state.extraKeywords);
-
-    // Only update if counts have actually changed
-    const hasChanged =
-      updatedMainKeywords.some(
-        (k, i) => k.timesUsed !== state.mainKeywords[i]?.timesUsed
-      ) ||
-      updatedExtraKeywords.some(
-        (k, i) => k.timesUsed !== state.extraKeywords[i]?.timesUsed
-      );
-
-    if (hasChanged) {
-      setState({
-        ...state,
-        mainKeywords: updatedMainKeywords,
-        extraKeywords: updatedExtraKeywords,
-      });
+  const handleAnalyze = async () => {
+    const textValue = safeState.text?.trim() ?? "";
+    if (!textValue) {
+      setError("Please enter text to analyze");
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.generatedText]);
 
-  const handleGenerateDescription = async () => {
-    setIsGenerating(true);
+    setIsAnalyzing(true);
     setError("");
-    setSuccessMessage("");
 
     try {
-      const response = await fetch(API_ENDPOINTS.generateDescription, {
+      const response = await fetch(API_ENDPOINTS.analyzeText, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          extension_name: state.extensionName,
-          short_description: state.shortDescription,
-          main_keywords: state.mainKeywords.map((k) => k.key).filter(Boolean),
-          extra_keywords: state.extraKeywords.map((k) => k.key).filter(Boolean),
-          user_prompt: state.userPrompt,
+          text: textValue,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate description");
+        throw new Error(errorData.error || "Failed to analyze text");
+      }
+
+      const data: AnalysisResult = await response.json();
+      setState({ text: safeState.text, analysisResult: data, turgenevResult: safeState.turgenevResult });
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to analyze text";
+      setError(errorMessage);
+      console.error("Analysis error:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleCheckSpam = async () => {
+    const textValue = safeState.text?.trim() ?? "";
+    if (!textValue) {
+      setSpamError("Please enter text to check");
+      return;
+    }
+
+    setIsCheckingSpam(true);
+    setSpamError("");
+
+    try {
+      const response = await fetch(API_ENDPOINTS.checkSpamRisk, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: textValue,
+          api_key: "720ce7af57236a9415a15b72a55efe62",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to check spam risk");
       }
 
       const data = await response.json();
-      setState({ ...state, generatedText: data.description });
-      setSuccessMessage("Description generated successfully!");
-      setTimeout(() => setSuccessMessage(""), 5000);
+      
+      if (!data.success) {
+        throw new Error(data.error || "Turgenev API returned an error");
+      }
+
+      setState({ 
+        text: safeState.text, 
+        analysisResult: safeState.analysisResult,
+        turgenevResult: data 
+      });
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : "Failed to generate description";
-      setError(errorMessage);
-      console.error("Generation error:", err);
+        err instanceof Error ? err.message : "Failed to check spam risk";
+      setSpamError(errorMessage);
+      console.error("Spam check error:", err);
     } finally {
-      setIsGenerating(false);
+      setIsCheckingSpam(false);
     }
   };
 
-  const handleCopyText = async () => {
-    try {
-      await navigator.clipboard.writeText(state.generatedText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
-
-  const handleClean = () => {
-    setShowCleanModal(true);
-  };
-
-  const handleConfirmClean = () => {
+  const handleClear = () => {
     setState(INITIAL_STATE);
-    setShowCleanModal(false);
+    setError("");
+    setSpamError("");
   };
 
-  const handleCancelClean = () => {
-    setShowCleanModal(false);
-  };
-
-  const handleDownload = () => {
-    const data = {
-      ...state,
-      stats: calculateStats(state.generatedText),
-      exportDate: new Date().toISOString(),
+  const translateRiskLevel = (level: string): string => {
+    const translations: { [key: string]: string } = {
+      "незначительный": "Low",
+      "средний": "Medium",
+      "высокий": "High",
+      "критический": "Critical",
     };
-    exportToJSON(data, `description-${Date.now()}.json`);
+    return translations[level.toLowerCase()] || level;
   };
-
-  const stats = calculateStats(state.generatedText);
-  const isExtensionNameValid =
-    state.extensionName.length >= EXTENSION_NAME_MIN_LENGTH &&
-    state.extensionName.length <= EXTENSION_NAME_MAX_LENGTH;
-  const isShortDescValid =
-    state.shortDescription.length >= SHORT_DESC_MIN_LENGTH &&
-    state.shortDescription.length <= SHORT_DESC_MAX_LENGTH;
 
   if (!isLoaded) {
     return (
@@ -167,189 +149,61 @@ export default function Home() {
       <div className="max-w-7xl mx-auto">
         <header className="mb-12 text-center">
           <h1 className="text-3xl font-bold text-gray-900">
-            Chrome Extension Description Generator
+            Keyword Density Analysis Tool
           </h1>
         </header>
 
-        <div className="space-y-6">
-          {/* Keyword Tables */}
-          <div className="bg-white border border-gray-200 rounded-lg shadow">
-            <button
-              type="button"
-              onClick={() => setShowKeywords(!showKeywords)}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 rounded-t-lg"
-            >
-              <h2 className="text-lg font-bold text-gray-900">Keywords</h2>
-              <span
-                className="text-gray-600 transform transition-transform duration-200"
-                style={{
-                  transform: showKeywords ? "rotate(180deg)" : "rotate(0deg)",
-                }}
-              >
-                ▼
-              </span>
-            </button>
-            
-            {showKeywords && (
-              <div className="p-6 border-t border-gray-200">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <div className="mb-2 flex gap-2">
-                      <CSVImport
-                        label="Import Main Keywords CSV"
-                        onImport={(keywords) =>
-                          setState({
-                            ...state,
-                            mainKeywords: [...state.mainKeywords, ...keywords],
-                          })
-                        }
-                      />
-                    </div>
-                    <KeywordTable
-                      title="Main Keywords"
-                      keywords={state.mainKeywords}
-                      onChange={(keywords) =>
-                        setState({ ...state, mainKeywords: keywords })
-                      }
-                    />
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Left Side - Text Area */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Text to Analyze
+            </label>
+            <textarea
+              value={safeState.text}
+              onChange={(e) =>
+                setState({
+                  text: e.target.value,
+                  analysisResult: safeState.analysisResult,
+                  turgenevResult: safeState.turgenevResult,
+                })
+              }
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
+              placeholder="Enter your text here for keyword density analysis..."
+              rows={20}
+            />
 
-                  <div>
-                    <div className="mb-2 flex gap-2">
-                      <CSVImport
-                        label="Import Extra Keywords CSV"
-                        onImport={(keywords) =>
-                          setState({
-                            ...state,
-                            extraKeywords: [...state.extraKeywords, ...keywords],
-                          })
-                        }
-                      />
-                    </div>
-                    <KeywordTable
-                      title="Extra Keywords"
-                      keywords={state.extraKeywords}
-                      onChange={(keywords) =>
-                        setState({ ...state, extraKeywords: keywords })
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input Fields */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Extension Name{" "}
-                <span className="text-gray-400 font-normal">
-                  ({state.extensionName.length}/{EXTENSION_NAME_MAX_LENGTH})
-                </span>
-              </label>
-              {!isExtensionNameValid && state.extensionName.length > 0 && (
-                <p className="text-xs text-red-600 mb-2">
-                  Must be between {EXTENSION_NAME_MIN_LENGTH} and{" "}
-                  {EXTENSION_NAME_MAX_LENGTH} characters
-                </p>
-              )}
-              <input
-                type="text"
-                value={state.extensionName}
-                onChange={(e) =>
-                  setState({ ...state, extensionName: e.target.value })
-                }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter extension name"
-                maxLength={EXTENSION_NAME_MAX_LENGTH}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Short Description{" "}
-                <span className="text-gray-400 font-normal">
-                  ({state.shortDescription.length}/{SHORT_DESC_MAX_LENGTH})
-                </span>
-              </label>
-              {!isShortDescValid && state.shortDescription.length > 0 && (
-                <p className="text-xs text-red-600 mb-2">
-                  Must be between {SHORT_DESC_MIN_LENGTH} and{" "}
-                  {SHORT_DESC_MAX_LENGTH} characters
-                </p>
-              )}
-              <textarea
-                value={state.shortDescription}
-                onChange={(e) =>
-                  setState({ ...state, shortDescription: e.target.value })
-                }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder="Enter short description"
-                rows={2}
-                maxLength={SHORT_DESC_MAX_LENGTH}
-              />
-            </div>
-
-            {/* <div>
+            <div className="flex gap-3 mt-4">
               <button
-                type="button"
-                onClick={() => setShowUserPrompt(!showUserPrompt)}
-                className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors"
-                disabled={true}
-              >
-                <span
-                  className="transform transition-transform duration-200"
-                  style={{
-                    transform: showUserPrompt
-                      ? "rotate(90deg)"
-                      : "rotate(0deg)",
-                  }}
-                >
-                  ▶
-                </span>
-                User Prompt (Future Feature)
-              </button>
-              {showUserPrompt && (
-                <div className="mt-3 animate-fadeIn">
-                  <textarea
-                    value={state.userPrompt}
-                    onChange={(e) =>
-                      setState({ ...state, userPrompt: e.target.value })
-                    }
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
-                    placeholder="User prompt for AI"
-                    rows={4}
-                    disabled={true}
-                  />
-                </div>
-              )}
-            </div> */}
-
-            <div className="flex gap-3 items-center pt-2">
-              <button
-                onClick={handleGenerateDescription}
-                disabled={
-                  isGenerating || !isExtensionNameValid || !isShortDescValid
-                }
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || !safeState.text?.trim()}
                 className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow"
               >
-                {isGenerating && (
+                {isAnalyzing && (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 )}
-                {isGenerating
-                  ? "Generating..."
-                  : "Generate Description with AI"}
+                {isAnalyzing ? "Analyzing..." : "Analyze"}
               </button>
-              {(!isExtensionNameValid || !isShortDescValid) && (
-                <span className="text-sm text-gray-500">
-                  Please fill in all required fields correctly
-                </span>
-              )}
+              <button
+                onClick={handleCheckSpam}
+                disabled={isCheckingSpam || !safeState.text?.trim()}
+                className="px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow"
+              >
+                {isCheckingSpam && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                {isCheckingSpam ? "Checking..." : "Check Spam Risk"}
+              </button>
+              <button
+                onClick={handleClear}
+                className="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 shadow"
+              >
+                Clear
+              </button>
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 border-l-4 border-red-500 rounded-lg text-red-700 text-sm shadow-sm">
+              <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg text-red-700 text-sm shadow-sm">
                 <div className="flex items-start gap-2">
                   <span className="text-red-500 font-bold text-lg">×</span>
                   <span>{error}</span>
@@ -357,120 +211,234 @@ export default function Home() {
               </div>
             )}
 
-            {successMessage && (
-              <div className="p-4 bg-green-50 border-l-4 border-green-500 rounded-lg text-green-700 text-sm shadow-sm">
+            {spamError && (
+              <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg text-red-700 text-sm shadow-sm">
                 <div className="flex items-start gap-2">
-                  <span className="text-green-500 font-bold">✓</span>
-                  <span>{successMessage}</span>
+                  <span className="text-red-500 font-bold text-lg">×</span>
+                  <span>{spamError}</span>
+                </div>
+              </div>
+            )}
+
+            {safeState.turgenevResult && (
+              <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Spam Risk Analysis (Turgenev)</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between py-2 border-b border-gray-200">
+                    <span className="text-gray-600">Overall Risk</span>
+                    <span className="font-bold text-gray-900">{safeState.turgenevResult.risk} points</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-gray-200">
+                    <span className="text-gray-600">Risk Level</span>
+                    <span className="font-bold text-gray-900">{translateRiskLevel(safeState.turgenevResult.level)}</span>
+                  </div>
+                  {safeState.turgenevResult.details?.map((detail, idx) => (
+                    detail.params.map((param, paramIdx) => (
+                      <div key={`${idx}-${paramIdx}`} className="flex justify-between py-1.5 text-xs">
+                        <span className="text-gray-600">{param.name}</span>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-gray-700">{param.value}</span>
+                          {param.score > 0 && (
+                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">
+                              {param.score}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Generated Text Editor */}
+          {/* Right Side - Analysis Results */}
           <div className="bg-white border border-gray-200 rounded-lg p-6 shadow">
-            <div className="flex justify-between items-center mb-4">
-              <label className="block text-sm font-semibold text-gray-700">
-                Generated Description
-              </label>
-              {state.generatedText && (
-                <button
-                  onClick={handleCopyText}
-                  className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium"
-                >
-                  {copied ? "✓ Copied!" : "Copy Text"}
-                </button>
-              )}
-            </div>
-            <textarea
-              value={state.generatedText}
-              onChange={(e) =>
-                setState({ ...state, generatedText: e.target.value })
-              }
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm resize-none"
-              placeholder="Generated description will appear here..."
-              rows={24}
-              maxLength={16000}
-            />
-          </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Analysis Results</h2>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleDownload}
-              className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow"
-            >
-              Download JSON
-            </button>
-            <button
-              onClick={handleClean}
-              className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 shadow"
-            >
-              Clean All
-            </button>
-          </div>
-
-          {/* Stats Footer */}
-          <div className="bg-gray-100 border border-gray-200 rounded-lg p-6 shadow">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">
-                  {stats.total}
-                </div>
-                <div className="text-sm text-gray-600 font-medium mt-1">
-                  Total Characters
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">
-                  {stats.withoutSpaces}
-                </div>
-                <div className="text-sm text-gray-600 font-medium mt-1">
-                  Characters (no spaces)
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">
-                  {stats.words}
-                </div>
-                <div className="text-sm text-gray-600 font-medium mt-1">
-                  Word Count
-                </div>
-              </div>
+            {safeState.analysisResult ? (
+              <>
+                <div className="mb-4 p-4 bg-gray-100 rounded-lg">
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <div className="text-xl font-bold text-gray-900">
+                        {safeState.text.length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Characters</div>
             </div>
+                    <div>
+                      <div className="text-xl font-bold text-gray-900">
+                        {safeState.text.replace(/\s/g, '').length}
+          </div>
+                      <div className="text-xs text-gray-600 mt-1">No Spaces</div>
+          </div>
+                    <div>
+                      <div className="text-xl font-bold text-gray-900">
+                        {safeState.analysisResult?.totalWords ?? 0}
+                </div>
+                      <div className="text-xs text-gray-600 mt-1">Word Count</div>
+                </div>
+              </div>
+                  <div className="mt-3 pt-3 border-t border-gray-300 text-center">
+                    <div className="text-xl font-bold text-gray-900">
+                      {safeState.analysisResult?.uniqueWords ?? 0}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">Unique Words</div>
+                </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-gray-200 mb-4">
+                  <button
+                    onClick={() => setActiveTab("keywords")}
+                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                      activeTab === "keywords"
+                        ? "border-blue-600 text-blue-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Single Keywords
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("phrases")}
+                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                      activeTab === "phrases"
+                        ? "border-blue-600 text-blue-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Keyword Phrases
+                  </button>
+                </div>
+
+                {/* Table Content */}
+                <div className="overflow-auto" style={{ maxHeight: "500px" }}>
+                  {activeTab === "keywords" ? (
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 bg-gray-100 border-b-2 border-gray-200">
+                        <tr>
+                          <th className="text-left p-3 font-semibold text-gray-700">
+                            Keyword
+                          </th>
+                          <th className="text-left p-3 font-semibold text-gray-700 w-24">
+                            Density
+                          </th>
+                          <th className="text-left p-3 font-semibold text-gray-700 w-24">
+                            Times Used
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const allKeywords = [
+                            ...(safeState.analysisResult?.singleKeywords ?? []),
+                            ...(safeState.analysisResult?.stopwords ?? [])
+                          ].sort((a, b) => b.density - a.density);
+                          
+                          return allKeywords.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={3}
+                                className="text-center p-8 text-gray-500"
+                              >
+                                No keywords found
+                              </td>
+                            </tr>
+                          ) : (
+                            allKeywords.map((item, index) => (
+                              <tr
+                                key={index}
+                                className={`border-b border-gray-100 hover:bg-gray-50 ${
+                                  item.isStopword ? 'text-gray-400' : ''
+                                }`}
+                              >
+                                <td className={`p-3 font-medium ${
+                                  item.isStopword ? '' : getDensityColor(item.density) + ' rounded-l-lg'
+                                }`}>
+                                  {item.keyword}
+                                </td>
+                                <td className={`p-3 ${
+                                  item.isStopword ? '' : getDensityColor(item.density)
+                                }`}>
+                                  {item.density}%
+                                </td>
+                                <td className={`p-3 ${
+                                  item.isStopword ? '' : getDensityColor(item.density) + ' rounded-r-lg'
+                                }`}>
+                                  <span className={`inline-block px-3 py-1 rounded-lg font-bold ${
+                                    item.isStopword 
+                                      ? 'bg-gray-100 text-gray-500' 
+                                      : 'bg-blue-100 text-gray-700'
+                                  }`}>
+                                    {item.timesUsed}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 bg-gray-100 border-b-2 border-gray-200">
+                        <tr>
+                          <th className="text-left p-3 font-semibold text-gray-700">
+                            Phrase
+                          </th>
+                          <th className="text-left p-3 font-semibold text-gray-700 w-24">
+                            Times Used
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(safeState.analysisResult?.phrases ?? []).length ===
+                        0 ? (
+                          <tr>
+                            <td
+                              colSpan={2}
+                              className="text-center p-8 text-gray-500"
+                            >
+                              No repeated phrases found
+                            </td>
+                          </tr>
+                        ) : (
+                          (safeState.analysisResult?.phrases ?? []).map(
+                            (item, index) => (
+                              <tr
+                                key={index}
+                                className="border-b border-gray-100 hover:bg-gray-50"
+                              >
+                                <td className="p-3 font-medium">
+                                  {item.phrase}
+                                </td>
+                                <td className="p-3">
+                                  <span className="inline-block px-3 py-1 bg-blue-100 rounded-lg text-gray-700 font-bold">
+                                    {item.timesUsed}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-16 text-gray-500">
+                <div className="text-4xl mb-4">📊</div>
+                <p className="font-medium">No analysis yet</p>
+                <p className="text-sm mt-2">
+                  Enter text and click Analyze to see results
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Clean All Confirmation Modal */}
-      {showCleanModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-3">
-              Clear All Data?
-            </h3>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to clear all data? This will reset
-              everything including keywords, extension details, and generated
-              text. This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleCancelClean}
-                className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmClean}
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg"
-              >
-                Clear All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+

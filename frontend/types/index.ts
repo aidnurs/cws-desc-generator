@@ -1,23 +1,39 @@
-export interface Keyword {
-  id: string;
-  key: string;
-  volume: string;
-  kd: string;
+export interface SingleKeyword {
+  keyword: string;
+  density: number;
+  timesUsed: number;
+  isStopword: boolean;
+}
+
+export interface KeywordPhrase {
+  phrase: string;
   timesUsed: number;
 }
 
-export interface AppState {
-  mainKeywords: Keyword[];
-  extraKeywords: Keyword[];
-  extensionName: string;
-  shortDescription: string;
-  userPrompt: string;
-  generatedText: string;
+export interface AnalysisResult {
+  singleKeywords: SingleKeyword[];
+  stopwords: SingleKeyword[];
+  phrases: KeywordPhrase[];
+  totalWords: number;
+  uniqueWords: number;
 }
 
+export interface TurgenevResult {
+  risk: number;
+  level: string;
+  details: Array<{
+    block: string;
+    sum: number;
+    params: Array<{
+      name: string;
+      value: string | number;
+      score: number;
+    }>;
+  }>;
+}
 
-export const EXTENSION_NAME_MIN_LENGTH = 3;
-export const EXTENSION_NAME_MAX_LENGTH = 75;
-export const SHORT_DESC_MIN_LENGTH = 10;
-export const SHORT_DESC_MAX_LENGTH = 132;
-
+export interface AppState {
+  text: string;
+  analysisResult: AnalysisResult | null;
+  turgenevResult: TurgenevResult | null;
+}
