@@ -24,6 +24,43 @@ except LookupError:
     nltk.download('stopwords', quiet=True)
 
 
+def detect_overfrequent_words(word_counts, total_words):
+    """
+    Detect words that appear significantly more than expected by Zipf's law.
+    
+    Uses a combination of:
+    1. Relative frequency compared to expected Zipf distribution
+    2. Absolute density threshold (words appearing >3% are suspicious)
+    
+    Returns a set of stems that are over-frequent.
+    """
+    if not word_counts or total_words == 0:
+        return set()
+    
+    sorted_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
+    overfrequent = set()
+    
+    if len(sorted_words) < 2:
+        return overfrequent
+    
+    # Get the top word frequency as reference
+    top_count = sorted_words[0][1]
+    
+    for rank, (stem, count) in enumerate(sorted_words, start=1):
+        density = (count / total_words) * 100
+        
+        # Zipf's law: f(rank) ≈ f(1) / rank
+        # Expected frequency at this rank
+        expected_count = top_count / rank
+        
+        # Flag if word appears more than 1.5x expected AND density > 3%
+        # OR if density is extremely high (> 5%)
+        if (count > expected_count * 1.5 and density > 3.0) or density > 5.0:
+            overfrequent.add(stem)
+    
+    return overfrequent
+
+
 def analyze_text_logic(text, language='english'):
     """Analyze text for keyword density and repeated phrases."""
     text_lower = text.lower()
@@ -64,6 +101,8 @@ def analyze_text_logic(text, language='english'):
 
     word_counts = Counter(meaningful_stems)
     stopword_counts = Counter(stopword_stems)
+    
+    overfrequent_words = detect_overfrequent_words(word_counts, total_words)
 
     # Generate bigrams from the original word sequence (preserving stopword positions)
     # but only count bigrams where BOTH words are meaningful (not stopwords)
@@ -78,7 +117,8 @@ def analyze_text_logic(text, language='english'):
             "keyword": stem_to_original.get(stem, stem),
             "density": round((count / total_words) * 100, 2),
             "timesUsed": count,
-            "isStopword": False
+            "isStopword": False,
+            "isOverFrequent": stem in overfrequent_words
         }
         for stem, count in sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
         if count >= 2 and round((count / total_words) * 100, 2) >= 0.8
@@ -89,7 +129,8 @@ def analyze_text_logic(text, language='english'):
             "keyword": stem_to_original.get(stem, stem),
             "density": round((count / total_words) * 100, 2),
             "timesUsed": count,
-            "isStopword": True
+            "isStopword": True,
+            "isOverFrequent": False
         }
         for stem, count in sorted(stopword_counts.items(), key=lambda x: x[1], reverse=True)
         if count >= 2 and round((count / total_words) * 100, 2) >= 0.8

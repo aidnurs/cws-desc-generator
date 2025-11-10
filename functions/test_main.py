@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import json
 import re
-from main import analyze_text_logic, get_spam_risk_score, generate_id
+from main import analyze_text_logic, get_spam_risk_score, generate_id, detect_overfrequent_words
 
 
 class TestAnalyzeTextLogic(unittest.TestCase):
@@ -225,6 +225,41 @@ class TestGenerateId(unittest.TestCase):
         """Test that generated IDs are unique."""
         ids = set(generate_id() for _ in range(100))
         self.assertEqual(len(ids), 100)
+
+
+class TestZipfLaw(unittest.TestCase):
+    """Test Zipf's law over-frequency detection."""
+
+
+    def test_detect_overfrequent_words_empty(self):
+        """Test with empty word counts."""
+        result = detect_overfrequent_words({}, 0)
+        self.assertEqual(result, set())
+
+    def test_detect_overfrequent_words(self):
+        """Test detection of over-frequent words."""
+        # Simulate a case where one word appears much more than expected
+        word_counts = {
+            'normal': 5,
+            'overused': 50,  # This should be flagged
+            'rare': 2
+        }
+        total_words = 100
+        
+        overfrequent = detect_overfrequent_words(word_counts, total_words)
+        self.assertIn('overused', overfrequent)
+
+    def test_analyze_text_with_overfrequent_flag(self):
+        """Test that analysis includes isOverFrequent flag."""
+        # Text with repeated word that should be flagged
+        text = "test " * 50 + "word " * 5 + "another " * 3
+        result = analyze_text_logic(text)
+        
+        # Check that keywords have the isOverFrequent field
+        self.assertGreater(len(result["singleKeywords"]), 0)
+        for keyword in result["singleKeywords"]:
+            self.assertIn("isOverFrequent", keyword)
+            self.assertIsInstance(keyword["isOverFrequent"], bool)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ export interface SingleKeyword {
   density: number;
   timesUsed: number;
   isStopword: boolean;
+  isOverFrequent: boolean;
 }
 
 export interface KeywordPhrase {
