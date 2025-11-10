@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import json
-from main import analyze_text_logic, get_spam_risk_score
+import re
+from main import analyze_text_logic, get_spam_risk_score, generate_id
 
 
 class TestAnalyzeTextLogic(unittest.TestCase):
@@ -203,6 +204,27 @@ class TestEdgeCases(unittest.TestCase):
         test_keyword = next((k for k in result["singleKeywords"] if k["keyword"] == "test"), None)
         if test_keyword:
             self.assertGreater(test_keyword["timesUsed"], 1)
+
+
+class TestGenerateId(unittest.TestCase):
+    """Test the ID generation function."""
+
+    def test_default_length(self):
+        """Test ID generation with default length."""
+        id1 = generate_id()
+        self.assertEqual(len(id1), 8)
+        self.assertTrue(re.match(r'^[a-z0-9]{8}$', id1))
+
+    def test_custom_length(self):
+        """Test ID generation with custom length."""
+        id1 = generate_id(12)
+        self.assertEqual(len(id1), 12)
+        self.assertTrue(re.match(r'^[a-z0-9]{12}$', id1))
+
+    def test_uniqueness(self):
+        """Test that generated IDs are unique."""
+        ids = set(generate_id() for _ in range(100))
+        self.assertEqual(len(ids), 100)
 
 
 if __name__ == "__main__":

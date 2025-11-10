@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { getDensityColor } from "@/utils/keywords";
 import { AppState, AnalysisResult } from "@/types";
 import { API_ENDPOINTS } from "@/config/api";
+import { HighlightedTextArea } from "@/components/HighlightedTextArea";
+import { ShareModal } from "@/components/ShareModal";
 
 const INITIAL_STATE: AppState = {
   text: "",
   analysisResult: null,
   spamRiskResult: null,
 };
+
+const MAX_TEXT_LENGTH = 50000;
 
 export default function Home() {
   const [state, setState, isLoaded] = useLocalStorage<AppState>(
@@ -19,8 +23,10 @@ export default function Home() {
   );
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingSpam, setIsCheckingSpam] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [spamError, setSpamError] = useState("");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"keywords" | "phrases">(
     "keywords"
   );
@@ -31,10 +37,87 @@ export default function Home() {
     spamRiskResult: state?.spamRiskResult ?? null,
   };
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isLoaded) {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      
+      if (id) {
+        fetch(`${API_ENDPOINTS.getAnalysis}?id=${id}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) {
+              setError(data.error);
+            } else {
+              setState({
+                text: data.text || "",
+                analysisResult: data.analysisResult || null,
+                spamRiskResult: data.spamRiskResult || null,
+              });
+            }
+          })
+          .catch(err => {
+            setError("Failed to load shared analysis");
+            console.error("Load error:", err);
+          });
+      }
+    }
+  }, [isLoaded]);
+
+  const handleShare = async () => {
+    if (!safeState.text?.trim()) {
+      setError("Please enter text to share");
+      return;
+    }
+
+    if (safeState.text.length > MAX_TEXT_LENGTH) {
+      setError(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch(API_ENDPOINTS.saveAnalysis, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: safeState.text,
+          analysisResult: safeState.analysisResult,
+          spamRiskResult: safeState.spamRiskResult,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save analysis");
+      }
+
+      const data = await response.json();
+      const url = `${window.location.origin}${window.location.pathname}?id=${data.id}`;
+      setShareUrl(url);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to save analysis";
+      setError(errorMessage);
+      console.error("Share error:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     const textValue = safeState.text?.trim() ?? "";
     if (!textValue) {
       setError("Please enter text to analyze");
+      return;
+    }
+
+    if (safeState.text.length > MAX_TEXT_LENGTH) {
+      setError(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
       return;
     }
 
@@ -73,6 +156,11 @@ export default function Home() {
     const textValue = safeState.text?.trim() ?? "";
     if (!textValue) {
       setSpamError("Please enter text to check");
+      return;
+    }
+
+    if (safeState.text.length > MAX_TEXT_LENGTH) {
+      setSpamError(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
       return;
     }
 
@@ -120,6 +208,7 @@ export default function Home() {
     setState(INITIAL_STATE);
     setError("");
     setSpamError("");
+    setShareUrl(null);
   };
 
   const translateRiskLevel = (level: string): string => {
@@ -155,19 +244,31 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Side - Text Area */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Text to Analyze
-            </label>
-            <textarea
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Text to Analyze
+              </label>
+              <span className={`text-xs ${
+                safeState.text.length > MAX_TEXT_LENGTH 
+                  ? 'text-red-600 font-medium' 
+                  : 'text-gray-500'
+              }`}>
+                {safeState.text.length} / {MAX_TEXT_LENGTH}
+              </span>
+            </div>
+            <HighlightedTextArea
               value={safeState.text}
-              onChange={(e) =>
-                          setState({
-                  text: e.target.value,
+              onChange={(value) =>
+                setState({
+                  text: value,
                   analysisResult: safeState.analysisResult,
                   spamRiskResult: safeState.spamRiskResult,
                 })
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
+              keywords={[
+                ...(safeState.analysisResult?.singleKeywords ?? []),
+                ...(safeState.analysisResult?.stopwords ?? [])
+              ]}
               placeholder="Paste your text here..."
               rows={22}
             />
@@ -175,17 +276,24 @@ export default function Home() {
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleAnalyze}
-                disabled={isAnalyzing || !safeState.text?.trim()}
+                disabled={isAnalyzing || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isAnalyzing ? "Analyzing..." : "Analyze Keywords"}
               </button>
               <button
                 onClick={handleCheckSpam}
-                disabled={isCheckingSpam || !safeState.text?.trim()}
+                disabled={isCheckingSpam || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH}
                 className="flex-1 px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isCheckingSpam ? "Checking..." : "Check Spam Risk"}
+              </button>
+              <button
+                onClick={handleShare}
+                disabled={isSaving || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSaving ? "Saving..." : "Share"}
               </button>
               <button
                 onClick={handleClear}
@@ -425,6 +533,13 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {shareUrl && (
+        <ShareModal 
+          url={shareUrl} 
+          onClose={() => setShareUrl(null)} 
+        />
+      )}
     </div>
   );
 }

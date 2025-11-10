@@ -9,4 +9,6 @@ const API_BASE_URL =
 export const API_ENDPOINTS = {
   analyzeText: `${API_BASE_URL}/analyze_text`,
   checkSpamRisk: `${API_BASE_URL}/check_spam_risk`,
+  saveAnalysis: `${API_BASE_URL}/save_analysis`,
+  getAnalysis: `${API_BASE_URL}/get_analysis`,
 };

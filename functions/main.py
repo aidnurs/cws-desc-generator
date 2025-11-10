@@ -1,6 +1,7 @@
 import secrets
+import string
 from firebase_functions import https_fn
-from firebase_admin import initialize_app
+from firebase_admin import initialize_app, firestore
 import json
 import re
 import os
@@ -10,8 +11,10 @@ from nltk.corpus import stopwords
 from nltk.util import ngrams
 from nltk.stem import PorterStemmer
 import requests
+from datetime import datetime
 
 initialize_app()
+db = firestore.client()
 
 DEFAULT_REGION = "europe-west3"
 
@@ -184,6 +187,13 @@ def analyze_text(req: https_fn.Request) -> https_fn.Response:
                 headers=cors_headers
             )
 
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
         result = analyze_text_logic(text)
 
         return https_fn.Response(
@@ -239,6 +249,13 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
                 headers=cors_headers
             )
 
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
         api_key = os.environ.get("TURGENEV_API_KEY")
         if not api_key:
             return https_fn.Response(
@@ -248,6 +265,153 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
             )
 
         result = get_spam_risk_score(text, api_key)
+
+        return https_fn.Response(
+            json.dumps(result),
+            status=200,
+            headers=cors_headers
+        )
+
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500,
+            headers=cors_headers
+        )
+
+
+def generate_id(length=8):
+    """Generate a random alphanumeric ID."""
+    characters = string.ascii_lowercase + string.digits
+    return ''.join(secrets.choice(characters) for _ in range(length))
+
+
+@https_fn.on_request(region=DEFAULT_REGION)
+def save_analysis(req: https_fn.Request) -> https_fn.Response:
+    """Save text and analysis results to Firestore."""
+
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    if req.method == "OPTIONS":
+        return https_fn.Response("", status=204, headers=cors_headers)
+
+    if req.method != "POST":
+        return https_fn.Response(
+            json.dumps({"error": "Method not allowed"}),
+            status=405,
+            headers=cors_headers
+        )
+
+    if not req.get_data():
+        return https_fn.Response(
+            json.dumps({"error": "No data provided"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    try:
+        data = req.get_json()
+        text = data.get("text", "")
+
+        if not text or not text.strip():
+            return https_fn.Response(
+                json.dumps({"error": "Text is required"}),
+                status=400,
+                headers=cors_headers
+            )
+
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
+        analysis_id = generate_id(8)
+        
+        doc_data = {
+            "id": analysis_id,
+            "text": text,
+            "analysisResult": data.get("analysisResult"),
+            "spamRiskResult": data.get("spamRiskResult"),
+            "createdAt": firestore.SERVER_TIMESTAMP
+        }
+
+        db.collection("analyses").document(analysis_id).set(doc_data)
+
+        return https_fn.Response(
+            json.dumps({"id": analysis_id}),
+            status=200,
+            headers=cors_headers
+        )
+
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500,
+            headers=cors_headers
+        )
+
+
+@https_fn.on_request(region=DEFAULT_REGION)
+def get_analysis(req: https_fn.Request) -> https_fn.Response:
+    """Retrieve analysis from Firestore by ID."""
+
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    if req.method == "OPTIONS":
+        return https_fn.Response("", status=204, headers=cors_headers)
+
+    if req.method != "GET":
+        return https_fn.Response(
+            json.dumps({"error": "Method not allowed"}),
+            status=405,
+            headers=cors_headers
+        )
+
+    analysis_id = req.args.get("id")
+
+    if not analysis_id:
+        return https_fn.Response(
+            json.dumps({"error": "ID parameter is required"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    if not re.match(r'^[a-z0-9]{8}$', analysis_id):
+        return https_fn.Response(
+            json.dumps({"error": "Invalid ID format"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    try:
+        doc = db.collection("analyses").document(analysis_id).get()
+
+        if not doc.exists:
+            return https_fn.Response(
+                json.dumps({"error": "Analysis not found"}),
+                status=404,
+                headers=cors_headers
+            )
+
+        doc_data = doc.to_dict()
+        
+        result = {
+            "text": doc_data.get("text"),
+            "analysisResult": doc_data.get("analysisResult"),
+            "spamRiskResult": doc_data.get("spamRiskResult")
+        }
 
         return https_fn.Response(
             json.dumps(result),
