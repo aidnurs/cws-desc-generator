@@ -112,7 +112,9 @@ Stopwords:
 - Limited to top 10 results
 
 Phrases:
-- Generate bigrams from meaningful stems
+- Generate bigrams from original word sequence preserving stopword positions
+- Only count bigrams where both words are meaningful (not stopwords)
+- This ensures phrases only count truly consecutive meaningful words
 - Filter: count >= 2
 - Sorted by frequency descending
 - Limited to top 10 results

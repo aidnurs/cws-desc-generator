@@ -42,10 +42,16 @@ def analyze_text_logic(text, language='english'):
     meaningful_stems = []
     stopword_stems = []
     stem_to_original = {}
+    all_stems = []
+    stem_is_stopword = {}
     
     for word in words:
         stemmed = stemmer.stem(word)
-        if word in stop_words:
+        all_stems.append(stemmed)
+        is_stop = word in stop_words
+        stem_is_stopword[stemmed] = is_stop
+        
+        if is_stop:
             stopword_stems.append(stemmed)
         else:
             meaningful_stems.append(stemmed)
@@ -56,7 +62,13 @@ def analyze_text_logic(text, language='english'):
     word_counts = Counter(meaningful_stems)
     stopword_counts = Counter(stopword_stems)
 
-    bigrams = Counter(ngrams(meaningful_stems, 2))
+    # Generate bigrams from the original word sequence (preserving stopword positions)
+    # but only count bigrams where BOTH words are meaningful (not stopwords)
+    all_bigrams = ngrams(all_stems, 2)
+    bigrams = Counter(
+        bigram for bigram in all_bigrams 
+        if not stem_is_stopword.get(bigram[0], True) and not stem_is_stopword.get(bigram[1], True)
+    )
 
     single_keywords = [
         {

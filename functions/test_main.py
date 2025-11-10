@@ -46,6 +46,20 @@ class TestAnalyzeTextLogic(unittest.TestCase):
         self.assertIsNotNone(ml_phrase)
         self.assertGreater(ml_phrase["timesUsed"], 1)
 
+    def test_phrases_only_consecutive_words(self):
+        """Test that phrases only count consecutive meaningful words."""
+        text = "extract table from pdf and extract table from excel and extract table from csv"
+        result = analyze_text_logic(text)
+        
+        # "extract table" should be counted (they are consecutive)
+        extract_table = next((p for p in result["phrases"] if p["phrase"] == "extract table"), None)
+        self.assertIsNotNone(extract_table, "Should find 'extract table' phrase")
+        self.assertEqual(extract_table["timesUsed"], 3)
+        
+        # "table pdf" should NOT be counted (not consecutive - has "from" in between)
+        table_pdf = next((p for p in result["phrases"] if p["phrase"] == "table pdf"), None)
+        self.assertIsNone(table_pdf, "Should NOT find 'table pdf' phrase (not consecutive)")
+
     def test_stopwords_filtered(self):
         """Test that stopwords are filtered out."""
         text = "the cat is on the mat the dog is under the table"
