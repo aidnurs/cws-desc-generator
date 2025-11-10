@@ -1,6 +1,7 @@
 import secrets
+import string
 from firebase_functions import https_fn
-from firebase_admin import initialize_app
+from firebase_admin import initialize_app, firestore
 import json
 import re
 import os
@@ -10,8 +11,10 @@ from nltk.corpus import stopwords
 from nltk.util import ngrams
 from nltk.stem import PorterStemmer
 import requests
+from datetime import datetime
 
 initialize_app()
+db = firestore.client()
 
 DEFAULT_REGION = "europe-west3"
 
@@ -19,6 +22,43 @@ try:
     nltk.data.find('corpora/stopwords')
 except LookupError:
     nltk.download('stopwords', quiet=True)
+
+
+def detect_overfrequent_words(word_counts, total_words):
+    """
+    Detect words that appear significantly more than expected by Zipf's law.
+    
+    Uses a combination of:
+    1. Relative frequency compared to expected Zipf distribution
+    2. Absolute density threshold (words appearing >3% are suspicious)
+    
+    Returns a set of stems that are over-frequent.
+    """
+    if not word_counts or total_words == 0:
+        return set()
+    
+    sorted_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
+    overfrequent = set()
+    
+    if len(sorted_words) < 2:
+        return overfrequent
+    
+    # Get the top word frequency as reference
+    top_count = sorted_words[0][1]
+    
+    for rank, (stem, count) in enumerate(sorted_words, start=1):
+        density = (count / total_words) * 100
+        
+        # Zipf's law: f(rank) ≈ f(1) / rank
+        # Expected frequency at this rank
+        expected_count = top_count / rank
+        
+        # Flag if word appears more than 1.5x expected AND density > 3%
+        # OR if density is extremely high (> 5%)
+        if (count > expected_count * 1.5 and density > 3.0) or density > 5.0:
+            overfrequent.add(stem)
+    
+    return overfrequent
 
 
 def analyze_text_logic(text, language='english'):
@@ -61,6 +101,8 @@ def analyze_text_logic(text, language='english'):
 
     word_counts = Counter(meaningful_stems)
     stopword_counts = Counter(stopword_stems)
+    
+    overfrequent_words = detect_overfrequent_words(word_counts, total_words)
 
     # Generate bigrams from the original word sequence (preserving stopword positions)
     # but only count bigrams where BOTH words are meaningful (not stopwords)
@@ -75,7 +117,8 @@ def analyze_text_logic(text, language='english'):
             "keyword": stem_to_original.get(stem, stem),
             "density": round((count / total_words) * 100, 2),
             "timesUsed": count,
-            "isStopword": False
+            "isStopword": False,
+            "isOverFrequent": stem in overfrequent_words
         }
         for stem, count in sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
         if count >= 2 and round((count / total_words) * 100, 2) >= 0.8
@@ -86,7 +129,8 @@ def analyze_text_logic(text, language='english'):
             "keyword": stem_to_original.get(stem, stem),
             "density": round((count / total_words) * 100, 2),
             "timesUsed": count,
-            "isStopword": True
+            "isStopword": True,
+            "isOverFrequent": False
         }
         for stem, count in sorted(stopword_counts.items(), key=lambda x: x[1], reverse=True)
         if count >= 2 and round((count / total_words) * 100, 2) >= 0.8
@@ -184,6 +228,13 @@ def analyze_text(req: https_fn.Request) -> https_fn.Response:
                 headers=cors_headers
             )
 
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
         result = analyze_text_logic(text)
 
         return https_fn.Response(
@@ -239,6 +290,13 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
                 headers=cors_headers
             )
 
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
         api_key = os.environ.get("TURGENEV_API_KEY")
         if not api_key:
             return https_fn.Response(
@@ -248,6 +306,153 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
             )
 
         result = get_spam_risk_score(text, api_key)
+
+        return https_fn.Response(
+            json.dumps(result),
+            status=200,
+            headers=cors_headers
+        )
+
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500,
+            headers=cors_headers
+        )
+
+
+def generate_id(length=8):
+    """Generate a random alphanumeric ID."""
+    characters = string.ascii_lowercase + string.digits
+    return ''.join(secrets.choice(characters) for _ in range(length))
+
+
+@https_fn.on_request(region=DEFAULT_REGION)
+def save_analysis(req: https_fn.Request) -> https_fn.Response:
+    """Save text and analysis results to Firestore."""
+
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    if req.method == "OPTIONS":
+        return https_fn.Response("", status=204, headers=cors_headers)
+
+    if req.method != "POST":
+        return https_fn.Response(
+            json.dumps({"error": "Method not allowed"}),
+            status=405,
+            headers=cors_headers
+        )
+
+    if not req.get_data():
+        return https_fn.Response(
+            json.dumps({"error": "No data provided"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    try:
+        data = req.get_json()
+        text = data.get("text", "")
+
+        if not text or not text.strip():
+            return https_fn.Response(
+                json.dumps({"error": "Text is required"}),
+                status=400,
+                headers=cors_headers
+            )
+
+        if len(text) > 50000:
+            return https_fn.Response(
+                json.dumps({"error": "Text exceeds maximum length of 50000 characters"}),
+                status=400,
+                headers=cors_headers
+            )
+
+        analysis_id = generate_id(8)
+        
+        doc_data = {
+            "id": analysis_id,
+            "text": text,
+            "analysisResult": data.get("analysisResult"),
+            "spamRiskResult": data.get("spamRiskResult"),
+            "createdAt": firestore.SERVER_TIMESTAMP
+        }
+
+        db.collection("analyses").document(analysis_id).set(doc_data)
+
+        return https_fn.Response(
+            json.dumps({"id": analysis_id}),
+            status=200,
+            headers=cors_headers
+        )
+
+    except Exception as e:
+        return https_fn.Response(
+            json.dumps({"error": str(e)}),
+            status=500,
+            headers=cors_headers
+        )
+
+
+@https_fn.on_request(region=DEFAULT_REGION)
+def get_analysis(req: https_fn.Request) -> https_fn.Response:
+    """Retrieve analysis from Firestore by ID."""
+
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    if req.method == "OPTIONS":
+        return https_fn.Response("", status=204, headers=cors_headers)
+
+    if req.method != "GET":
+        return https_fn.Response(
+            json.dumps({"error": "Method not allowed"}),
+            status=405,
+            headers=cors_headers
+        )
+
+    analysis_id = req.args.get("id")
+
+    if not analysis_id:
+        return https_fn.Response(
+            json.dumps({"error": "ID parameter is required"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    if not re.match(r'^[a-z0-9]{8}$', analysis_id):
+        return https_fn.Response(
+            json.dumps({"error": "Invalid ID format"}),
+            status=400,
+            headers=cors_headers
+        )
+
+    try:
+        doc = db.collection("analyses").document(analysis_id).get()
+
+        if not doc.exists:
+            return https_fn.Response(
+                json.dumps({"error": "Analysis not found"}),
+                status=404,
+                headers=cors_headers
+            )
+
+        doc_data = doc.to_dict()
+        
+        result = {
+            "text": doc_data.get("text"),
+            "analysisResult": doc_data.get("analysisResult"),
+            "spamRiskResult": doc_data.get("spamRiskResult")
+        }
 
         return https_fn.Response(
             json.dumps(result),

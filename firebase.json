@@ -13,6 +13,9 @@
       "runtime": "python313"
     }
   ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "public": "frontend/out",
     "cleanUrls": true,
