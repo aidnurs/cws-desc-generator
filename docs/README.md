@@ -1,1 +1,0 @@
-# cws-desc-generator

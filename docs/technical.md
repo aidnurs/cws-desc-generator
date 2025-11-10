@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-Next.js frontend with Firebase Functions backend using OpenAI API for description generation.
+Next.js frontend with Firebase Functions backend for keyword density analysis and spam risk detection.
 
 ## Stack
 
@@ -15,8 +15,9 @@ Frontend:
 
 Backend:
 - Firebase Functions (Python 3.13)
-- OpenAI API (GPT-4.1)
-- JSON Schema validation
+- NLTK for text processing
+- Porter Stemmer for word normalization
+- External spam detection API
 - Structured logging
 
 ## Project Structure
@@ -28,8 +29,8 @@ frontend/
 │   ├── layout.tsx
 │   └── globals.css
 ├── components/
-│   ├── KeywordTable.tsx      Keyword management
-│   └── CSVImport.tsx
+│   ├── KeywordTable.tsx      Keyword display table
+│   └── HighlightedTextArea.tsx  Text highlighting component
 ├── config/
 │   └── api.ts                API configuration
 ├── hooks/
@@ -37,108 +38,195 @@ frontend/
 ├── types/
 │   └── index.ts
 └── utils/
-    └── keywords.ts
+    └── keywords.ts           Density color utilities
 
 functions/
-├── main.py                   API endpoint
-└── services/
-    ├── logging_config.py
-    ├── prompt.py
-    └── validation.py         JSON Schema validation
+├── main.py                   API endpoints
+├── services/
+│   └── logging_config.py
+└── test_main.py              Unit tests
 ```
 
-## API Endpoint
+## API Endpoints
 
-Endpoint: POST /generate_description
+### POST /analyze_text
+
+Analyzes text for keyword density and phrase frequency.
+
+Request format:
+- text: string
+
+Response format (camelCase):
+- singleKeywords: array of keyword objects
+- stopwords: array of stopword objects
+- phrases: array of phrase objects
+- totalWords: number
+- uniqueWords: number
+
+Keyword object:
+- keyword: string
+- density: number (percentage)
+- timesUsed: number
+- isStopword: boolean
+
+Phrase object:
+- phrase: string
+- timesUsed: number
+
+### POST /check_spam_risk
+
+Assesses text spam risk using external API.
+
+Request format:
+- text: string
+
+Response format:
+- success: boolean
+- risk: number
+- level: string
+- details: array
+- link: string
 
 CORS enabled for all origins with OPTIONS preflight support.
 
-Request format (snake_case):
-- extension_name: string (3-75 chars)
-- short_description: string (10-132 chars)
-- main_keywords: array of strings
-- extra_keywords: array of strings
-- user_prompt: string (optional)
+## Text Analysis Logic
 
-Response: JSON with description field
+### Preprocessing
 
-API URL configured in frontend/config/api.ts with environment variable support.
+1. Convert text to lowercase
+2. Extract words using regex pattern
+3. Apply Porter Stemmer to normalize words
+4. Separate meaningful words from stopwords
+5. Map stems back to shortest original word for display
 
-## Validation Architecture
+### Keyword Extraction
 
-Uses JSON Schema (Draft 7) for request validation.
+Single keywords:
+- Filter: count >= 2 AND density >= 0.8%
+- Sorted by frequency descending
+- Limited to top 10 results
 
-Location: functions/services/validation.py
+Stopwords:
+- Filter: count >= 2 AND density >= 0.8%
+- Sorted by frequency descending
+- Limited to top 10 results
 
-Key features:
-- Centralized validation logic
-- Type checking
-- Length validation
-- User-friendly error messages
-- Extensible schema
+Phrases:
+- Generate bigrams from meaningful stems
+- Filter: count >= 2
+- Sorted by frequency descending
+- Limited to top 10 results
 
-Schema defined in REQUEST_SCHEMA constant with minLength, maxLength, type constraints.
+### Density Calculation
 
-Validation function returns tuple: (is_valid: bool, error_message: str)
+Density = (keyword_count / total_words) * 100
+
+Rounded to 2 decimal places.
+
+### Stemming
+
+Uses Porter Stemmer to group related words:
+- pdf and pdfs treated as same word
+- data and database remain distinct
+- Displays shortest original word in results
+
+## Frontend Features
+
+### Text Highlighting
+
+Keywords with density >= 0.8% are highlighted in textarea:
+- Background color based on density range
+- Dotted underline matching density color
+- Hover effect highlights all instances simultaneously
+- Overlay technique with scroll synchronization
+
+### Density Color Coding
+
+Color ranges:
+- 0-0.8%: No highlight
+- 0.8-1.8%: Blue
+- 1.8-2.8%: Yellow
+- 2.8-3.8%: Orange
+- 3.8%+: Red
+
+Same colors applied to keyword table cells.
+
+### Text Statistics
+
+Displayed after analysis:
+- Character count with spaces
+- Character count without spaces
+- Word count
+- Unique word count
+
+### Spam Risk Display
+
+Collapsible section above keyword results:
+- Risk score in points
+- Risk level (translated from Russian)
+- Detailed parameters with scores
+- Independent of keyword analysis results
 
 ## Field Name Convention
 
-Backend uses snake_case following Python conventions:
-- extension_name
-- short_description
-- main_keywords
-- extra_keywords
-- user_prompt
+Backend uses camelCase in JSON responses:
+- singleKeywords
+- totalWords
+- uniqueWords
+- timesUsed
+- isStopword
 
-Frontend converts from camelCase to snake_case when making API calls.
+Frontend uses camelCase throughout.
 
 ## Environment Variables
 
-OPENAI_KEY: OpenAI API key (configured as Firebase secret)
+TURGENEV_API_KEY: Spam detection API key (configured as Firebase secret)
 
 ## Local Storage
 
-Frontend stores complete application state in browser local storage.
+Frontend stores application state in browser local storage.
 
 State includes:
-- Keywords (main and extra)
-- Extension name and description
-- User prompt
-- Generated text
+- Text input
+- Analysis results
+- Spam risk results
 
 Auto-saves on every change.
 
-## Keyword Counting
+## Analysis Flow
 
-Tracks keyword occurrences in generated text using regex matching.
+1. User inputs text in textarea
+2. User clicks Analyze Keywords button
+3. Frontend sends POST request to /analyze_text
+4. Backend processes text with NLTK
+5. Backend calculates keyword density and phrase frequency
+6. Backend returns results in camelCase format
+7. Frontend displays results in tables
+8. Frontend highlights keywords in textarea
+9. Frontend displays text statistics
 
-Counts partial matches (e.g., "task" in "task manager" counts for both).
+## Spam Risk Flow
 
-Updates automatically when text changes.
+1. User clicks Check Spam Risk button
+2. Frontend sends POST request to /check_spam_risk
+3. Backend calls external API with text
+4. Backend translates risk level from Russian to English
+5. Backend returns risk assessment
+6. Frontend displays in collapsible section
 
-## Generation Flow
+## Error Handling
 
-1. User fills extension details and keywords
-2. Frontend validates input lengths
-3. Submit triggers API call with snake_case fields
-4. Backend validates using JSON Schema
-5. Constructs system and user prompts
-6. Calls OpenAI API (GPT-4.1)
-7. Returns generated description
-8. Frontend displays and auto-saves
+Frontend:
+- Try-catch around API calls
+- Display error messages to user
+- Clear errors on new attempt
+- Separate error states for keyword and spam analysis
 
-## Validation Flow
-
-Frontend validation:
-- Real-time character counting
-- Visual feedback for invalid inputs
-- Disable submit when invalid
-
-Backend validation:
-- JSON Schema validation
-- Empty string checks
-- Type validation
-- Returns specific error messages
+Backend:
+- Validation errors return 400
+- API errors return 500
+- All errors return JSON with error field
+- Structured logging for debugging
 
 ## Logging
 
@@ -147,38 +235,9 @@ Uses structured logging throughout backend.
 Log levels:
 - INFO: Successful operations
 - WARNING: Validation failures
-- ERROR: Generation failures
+- ERROR: Analysis failures
 
-Logs include context (extension name, error details).
-
-## Error Handling
-
-Frontend:
-- Try-catch around API calls
-- Display error messages to user
-- Clear errors on new attempt
-- Modal confirmation for destructive actions
-
-Backend:
-- Validation errors return 400
-- API errors return 500
-- All errors return JSON with error field
-
-## Prompt Engineering
-
-System prompt defines:
-- Content structure (10-16 paragraphs)
-- Text formatting rules
-- Keyword usage requirements
-- Writing style guidelines
-- SEO best practices
-
-User prompt provides:
-- Extension details
-- Keyword lists
-- Generation instructions
-
-Target output: 4500 characters
+Logs include context (text length, error details).
 
 ## Security Considerations
 
@@ -190,7 +249,7 @@ Target output: 4500 characters
 ## Performance
 
 - Local storage provides instant saves
-- Keyword counting optimized with regex
+- Text analysis optimized with Counter
 - No rate limiting implemented
 - Frontend validation prevents unnecessary API calls
 
@@ -199,8 +258,8 @@ Target output: 4500 characters
 Backend URL defined in frontend/config/api.ts.
 
 Automatically detects environment:
-- Development: http://127.0.0.1:5001/cws-desc-generator/us-central1
-- Production: https://us-central1-cws-desc-generator.cloudfunctions.net
+- Development: http://127.0.0.1:5001/cws-desc-generator/europe-west3
+- Production: https://europe-west3-cws-desc-generator.cloudfunctions.net
 
 Environment variable override:
 - NEXT_PUBLIC_API_URL: Override default API URL
@@ -210,7 +269,6 @@ Environment variable override:
 Frontend configured for static export:
 - Output: frontend/out directory
 - All pages pre-rendered at build time
-- Optimized images (unoptimized for static export)
 - No server-side rendering
 
 Firebase Hosting serves static files from frontend/out.
@@ -228,11 +286,19 @@ Manual deployment to Firebase:
 
 See DEPLOYMENT.md for detailed instructions.
 
+## Testing
+
+Backend unit tests in functions/test_main.py:
+- Text analysis logic tests
+- Spam risk API integration tests
+- Edge case handling tests
+
+Run tests: python -m pytest functions/test_main.py
+
 ## Future Considerations
 
 Rate limiting for production deployment.
 Restrict CORS to specific origins in production.
-API key usage tracking.
-Shareable links with Firestore storage.
+API usage tracking.
+Export functionality for analysis results.
 Analytics integration.
-
