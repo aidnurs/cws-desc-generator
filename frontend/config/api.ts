@@ -7,6 +7,6 @@ const API_BASE_URL =
     : "https://europe-west3-cws-desc-generator.cloudfunctions.net");
 
 export const API_ENDPOINTS = {
-  generateDescription: `${API_BASE_URL}/generate_description`,
+  analyzeText: `${API_BASE_URL}/analyze_text`,
+  checkSpamRisk: `${API_BASE_URL}/check_spam_risk`,
 };
-
