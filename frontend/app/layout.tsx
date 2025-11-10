@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chrome Extension Description Generator",
-  description: "Generate a description for your Chrome extension",
+  title: "Text Analysis Tool",
+  description: "Analyze keyword density and spam risk in your text",
 };
 
 export default function RootLayout({

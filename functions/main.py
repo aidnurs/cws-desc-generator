@@ -1,7 +1,9 @@
+import secrets
 from firebase_functions import https_fn
 from firebase_admin import initialize_app
 import json
 import re
+import os
 from collections import Counter
 import nltk
 from nltk.corpus import stopwords
@@ -96,8 +98,8 @@ def analyze_text_logic(text, language='english'):
     }
 
 
-def get_turgenev_risk_score(text, api_key):
-    """Call Turgenev API to get spam risk score."""
+def get_spam_risk_score(text, api_key):
+    """Call spam detection API to get risk score."""
     try:
         import urllib.parse
         encoded_text = urllib.parse.quote(text)
@@ -186,9 +188,9 @@ def analyze_text(req: https_fn.Request) -> https_fn.Response:
         )
 
 
-@https_fn.on_request(region=DEFAULT_REGION)
+@https_fn.on_request(region=DEFAULT_REGION, secrets=["TURGENEV_API_KEY"])
 def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
-    """Check text spam risk using Turgenev API."""
+    """Check text spam risk."""
 
     cors_headers = {
         "Content-Type": "application/json",
@@ -217,7 +219,6 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
     try:
         data = req.get_json()
         text = data.get("text", "")
-        api_key = data.get("api_key", "")
 
         if not text or not text.strip():
             return https_fn.Response(
@@ -226,14 +227,15 @@ def check_spam_risk(req: https_fn.Request) -> https_fn.Response:
                 headers=cors_headers
             )
 
+        api_key = os.environ.get("TURGENEV_API_KEY")
         if not api_key:
             return https_fn.Response(
-                json.dumps({"error": "API key is required"}),
-                status=400,
+                json.dumps({"error": "API key not configured"}),
+                status=500,
                 headers=cors_headers
             )
 
-        result = get_turgenev_risk_score(text, api_key)
+        result = get_spam_risk_score(text, api_key)
 
         return https_fn.Response(
             json.dumps(result),

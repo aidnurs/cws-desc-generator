@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import json
-from main import analyze_text_logic, get_turgenev_risk_score
+from main import analyze_text_logic, get_spam_risk_score
 
 
 class TestAnalyzeTextLogic(unittest.TestCase):
@@ -93,12 +93,12 @@ class TestAnalyzeTextLogic(unittest.TestCase):
         self.assertGreater(result["totalWords"], 0)
 
 
-class TestTurgenevIntegration(unittest.TestCase):
-    """Test the Turgenev API integration."""
+class TestSpamRiskIntegration(unittest.TestCase):
+    """Test the spam risk API integration."""
 
-    @patch('main.requests.post')
-    def test_successful_api_call(self, mock_post):
-        """Test successful Turgenev API call."""
+    @patch('main.requests.get')
+    def test_successful_api_call(self, mock_get):
+        """Test successful spam risk API call."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -107,39 +107,39 @@ class TestTurgenevIntegration(unittest.TestCase):
             "details": [],
             "link": "test123"
         }
-        mock_post.return_value = mock_response
+        mock_get.return_value = mock_response
         
-        result = get_turgenev_risk_score("Test text", "test_api_key")
+        result = get_spam_risk_score("Test text", "test_api_key")
         
         self.assertTrue(result["success"])
         self.assertEqual(result["risk"], 6)
         self.assertEqual(result["level"], "средний")
-        mock_post.assert_called_once()
+        mock_get.assert_called_once()
 
-    @patch('main.requests.post')
-    def test_api_error_response(self, mock_post):
-        """Test Turgenev API error response."""
+    @patch('main.requests.get')
+    def test_api_error_response(self, mock_get):
+        """Test spam risk API error response."""
         mock_response = MagicMock()
         mock_response.status_code = 400
-        mock_post.return_value = mock_response
+        mock_get.return_value = mock_response
         
-        result = get_turgenev_risk_score("Test text", "test_api_key")
-        
-        self.assertFalse(result["success"])
-        self.assertIn("error", result)
-
-    @patch('main.requests.post')
-    def test_api_timeout(self, mock_post):
-        """Test Turgenev API timeout."""
-        mock_post.side_effect = Exception("Connection timeout")
-        
-        result = get_turgenev_risk_score("Test text", "test_api_key")
+        result = get_spam_risk_score("Test text", "test_api_key")
         
         self.assertFalse(result["success"])
         self.assertIn("error", result)
 
-    @patch('main.requests.post')
-    def test_api_with_empty_text(self, mock_post):
+    @patch('main.requests.get')
+    def test_api_timeout(self, mock_get):
+        """Test spam risk API timeout."""
+        mock_get.side_effect = Exception("Connection timeout")
+        
+        result = get_spam_risk_score("Test text", "test_api_key")
+        
+        self.assertFalse(result["success"])
+        self.assertIn("error", result)
+
+    @patch('main.requests.get')
+    def test_api_with_empty_text(self, mock_get):
         """Test API call with empty text."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -149,9 +149,9 @@ class TestTurgenevIntegration(unittest.TestCase):
             "details": [],
             "link": ""
         }
-        mock_post.return_value = mock_response
+        mock_get.return_value = mock_response
         
-        result = get_turgenev_risk_score("", "test_api_key")
+        result = get_spam_risk_score("", "test_api_key")
         
         self.assertTrue(result["success"])
 

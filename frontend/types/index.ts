@@ -18,7 +18,7 @@ export interface AnalysisResult {
   uniqueWords: number;
 }
 
-export interface TurgenevResult {
+export interface SpamRiskResult {
   risk: number;
   level: string;
   details: Array<{
@@ -35,5 +35,5 @@ export interface TurgenevResult {
 export interface AppState {
   text: string;
   analysisResult: AnalysisResult | null;
-  turgenevResult: TurgenevResult | null;
+  spamRiskResult: SpamRiskResult | null;
 }
