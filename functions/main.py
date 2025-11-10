@@ -66,7 +66,7 @@ def analyze_text_logic(text, language='english'):
             "isStopword": False
         }
         for stem, count in sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
-        if count >= 2
+        if count >= 2 and round((count / total_words) * 100, 2) >= 0.8
     ]
     
     stopwords_list = [
@@ -77,7 +77,7 @@ def analyze_text_logic(text, language='english'):
             "isStopword": True
         }
         for stem, count in sorted(stopword_counts.items(), key=lambda x: x[1], reverse=True)
-        if count >= 2
+        if count >= 2 and round((count / total_words) * 100, 2) >= 0.8
     ]
 
     phrases = [
