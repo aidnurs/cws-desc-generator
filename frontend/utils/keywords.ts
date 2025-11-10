@@ -1,11 +1,11 @@
 import { AnalysisResult, SingleKeyword } from '@/types';
 
 export function getDensityColor(density: number): string {
-  if (density < 0.8) return 'bg-green-50 text-green-900';
-  if (density < 1.8) return 'bg-blue-50 text-blue-900';
-  if (density < 2.8) return 'bg-yellow-50 text-yellow-900';
-  if (density < 3.8) return 'bg-orange-50 text-orange-900';
-  return 'bg-red-50 text-red-900';
+  if (density < 0.8) return '';
+  if (density < 1.8) return 'text-blue-600';
+  if (density < 2.8) return 'text-yellow-600';
+  if (density < 3.8) return 'text-orange-600';
+  return 'text-red-600';
 }
 
 export function getTextColor(density: number): string {

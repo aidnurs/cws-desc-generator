@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { SingleKeyword } from "@/types";
 import { getTextColorValue, getHighlightColor } from "@/utils/keywords";
 
@@ -10,7 +10,9 @@ interface HighlightedTextAreaProps {
   keywords: SingleKeyword[];
   placeholder?: string;
   rows?: number;
-  className?: string;
+  isViewMode?: boolean;
+  hoveredKeyword?: string | null;
+  onHoverChange?: (keyword: string | null) => void;
 }
 
 export function HighlightedTextArea({
@@ -19,24 +21,13 @@ export function HighlightedTextArea({
   keywords,
   placeholder,
   rows = 22,
-  className = "",
+  isViewMode = false,
+  hoveredKeyword = null,
+  onHoverChange,
 }: HighlightedTextAreaProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [hoveredKeyword, setHoveredKeyword] = useState<string | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
 
-  const handleScroll = () => {
-    if (textareaRef.current && highlightRef.current) {
-      const scrollTop = textareaRef.current.scrollTop;
-      const scrollLeft = textareaRef.current.scrollLeft;
-      highlightRef.current.style.transform = `translate(-${scrollLeft}px, -${scrollTop}px)`;
-    }
-  };
-
-  const buildHighlightedText = () => {
-    if (!value) {
+  const highlightedHTML = useMemo(() => {
+    if (!value || !isViewMode) {
       return "";
     }
 
@@ -48,12 +39,16 @@ export function HighlightedTextArea({
       });
 
     if (keywordMap.size === 0) {
-      return value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return value.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
     }
 
     const words = value.split(/(\s+)/);
     return words
       .map((word) => {
+        if (word === "\n") {
+          return "<br>";
+        }
+        
         const cleanWord = word.toLowerCase().replace(/[^\w]/g, "");
         const keyword = keywordMap.get(cleanWord);
 
@@ -65,7 +60,7 @@ export function HighlightedTextArea({
 
           const escapedWord = word.replace(/</g, "&lt;").replace(/>/g, "&gt;");
           return `<span 
-            style="color: ${color}; background-color: ${bgColor}; cursor: pointer;" 
+            style="color: ${color}; background-color: ${bgColor}; cursor: pointer; transition: background-color 0.15s;" 
             data-keyword="${keyword.keyword.toLowerCase()}"
             class="keyword-highlight"
           >${escapedWord}</span>`;
@@ -73,81 +68,52 @@ export function HighlightedTextArea({
         return word.replace(/</g, "&lt;").replace(/>/g, "&gt;");
       })
       .join("");
+  }, [value, keywords, hoveredKeyword, isViewMode]);
+
+  const handleMouseOver = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("keyword-highlight")) {
+      const keyword = target.getAttribute("data-keyword");
+      if (onHoverChange) {
+        onHoverChange(keyword);
+      }
+    }
   };
 
-  useEffect(() => {
-    const highlightElement = highlightRef.current;
-    if (highlightElement) {
-      const handleMouseOver = (e: MouseEvent) => {
-        const target = e.target as HTMLElement;
-        if (target.classList.contains("keyword-highlight")) {
-          const keyword = target.getAttribute("data-keyword");
-          setHoveredKeyword(keyword);
-        }
-      };
-
-      const handleMouseOut = () => {
-        setHoveredKeyword(null);
-      };
-
-      highlightElement.addEventListener("mouseover", handleMouseOver);
-      highlightElement.addEventListener("mouseout", handleMouseOut);
-
-      return () => {
-        highlightElement.removeEventListener("mouseover", handleMouseOver);
-        highlightElement.removeEventListener("mouseout", handleMouseOut);
-      };
+  const handleMouseOut = () => {
+    if (onHoverChange) {
+      onHoverChange(null);
     }
-  }, []);
+  };
 
-  return (
-    <div 
-      ref={containerRef}
-      className={`relative w-full bg-white rounded transition-all ${
-        isFocused 
-          ? 'border border-blue-500 ring-1 ring-blue-500' 
-          : 'border border-gray-300'
-      }`}
-    >
-      <div
-        className="absolute inset-0 overflow-hidden rounded pointer-events-none"
-        style={{
-          zIndex: 1,
-        }}
-      >
+  if (isViewMode) {
+    return (
+      <div className="relative w-full bg-gray-50 rounded border-2 border-blue-200 shadow-sm">
+        <div className="absolute top-2 right-2 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+          View Mode
+        </div>
         <div
-          ref={highlightRef}
-          className="whitespace-pre-wrap wrap-break-word pointer-events-auto"
+          className="w-full px-3 py-2 pt-10 text-sm overflow-auto whitespace-pre-wrap select-text"
           style={{
-            padding: "0.5rem 0.75rem",
-            fontFamily: "inherit",
-            fontSize: "0.875rem",
-            lineHeight: "1.25rem",
-            color: "#1f2937",
+            minHeight: `${rows * 1.25 + 1}rem`,
+            maxHeight: `${rows * 1.25 + 1}rem`,
           }}
-          dangerouslySetInnerHTML={{ __html: buildHighlightedText() }}
+          onMouseOver={handleMouseOver}
+          onMouseOut={handleMouseOut}
+          dangerouslySetInnerHTML={{ __html: highlightedHTML }}
         />
       </div>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onScroll={handleScroll}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        placeholder={placeholder}
-        rows={rows}
-        className={`relative w-full px-3 py-2 resize-none text-sm ${className}`}
-        style={{
-          zIndex: 2,
-          caretColor: "black",
-          background: "transparent",
-          color: "transparent",
-          border: "none",
-          outline: "none",
-        }}
-      />
-    </div>
+    );
+  }
+
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none text-sm"
+    />
   );
 }
 

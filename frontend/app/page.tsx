@@ -27,6 +27,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [spamError, setSpamError] = useState("");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isViewMode, setIsViewMode] = useState(false);
+  const [hoveredKeyword, setHoveredKeyword] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"keywords" | "phrases">(
     "keywords"
   );
@@ -54,6 +56,9 @@ export default function Home() {
                 analysisResult: data.analysisResult || null,
                 spamRiskResult: data.spamRiskResult || null,
               });
+              if (data.analysisResult) {
+                setIsViewMode(true);
+              }
             }
           })
           .catch(err => {
@@ -62,7 +67,7 @@ export default function Home() {
           });
       }
     }
-  }, [isLoaded]);
+  }, [isLoaded, setState]);
 
   const handleShare = async () => {
     if (!safeState.text?.trim()) {
@@ -142,6 +147,7 @@ export default function Home() {
 
       const data: AnalysisResult = await response.json();
       setState({ text: safeState.text, analysisResult: data, spamRiskResult: safeState.spamRiskResult });
+      setIsViewMode(true);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to analyze text";
@@ -209,6 +215,7 @@ export default function Home() {
     setError("");
     setSpamError("");
     setShareUrl(null);
+    setIsViewMode(false);
   };
 
   const translateRiskLevel = (level: string): string => {
@@ -248,13 +255,58 @@ export default function Home() {
               <label className="block text-sm font-medium text-gray-700">
                 Text to Analyze
               </label>
-              <span className={`text-xs ${
-                safeState.text.length > MAX_TEXT_LENGTH 
-                  ? 'text-red-600 font-medium' 
-                  : 'text-gray-500'
-              }`}>
-                {safeState.text.length} / {MAX_TEXT_LENGTH}
-              </span>
+              <div className="flex items-center gap-3">
+                {safeState.analysisResult && (
+                  <div className="flex gap-1 border border-gray-300 rounded">
+                    <button
+                      onClick={() => setIsViewMode(false)}
+                      className={`px-3 py-1 text-xs font-medium rounded-l transition-colors ${
+                        !isViewMode
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      title="Edit mode"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 inline mr-1"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setIsViewMode(true)}
+                      className={`px-3 py-1 text-xs font-medium rounded-r transition-colors ${
+                        isViewMode
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      title="View mode"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 inline mr-1"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                      </svg>
+                      View
+                    </button>
+                  </div>
+                )}
+                <span className={`text-xs ${
+                  safeState.text.length > MAX_TEXT_LENGTH 
+                    ? 'text-red-600 font-medium' 
+                    : 'text-gray-500'
+                }`}>
+                  {safeState.text.length} / {MAX_TEXT_LENGTH}
+                </span>
+              </div>
             </div>
             <HighlightedTextArea
               value={safeState.text}
@@ -271,19 +323,22 @@ export default function Home() {
               ]}
               placeholder="Paste your text here..."
               rows={22}
+              isViewMode={isViewMode}
+              hoveredKeyword={hoveredKeyword}
+              onHoverChange={setHoveredKeyword}
             />
 
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleAnalyze}
-                disabled={isAnalyzing || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH}
+                disabled={isAnalyzing || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH || isViewMode}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isAnalyzing ? "Analyzing..." : "Analyze Keywords"}
               </button>
               <button
                 onClick={handleCheckSpam}
-                disabled={isCheckingSpam || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH}
+                disabled={isCheckingSpam || !safeState.text?.trim() || safeState.text.length > MAX_TEXT_LENGTH || isViewMode}
                 className="flex-1 px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isCheckingSpam ? "Checking..." : "Check Spam Risk"}
@@ -413,36 +468,48 @@ export default function Home() {
                               </td>
                             </tr>
                           ) : (
-                            allKeywords.map((item, index) => (
-                              <tr
-                                key={index}
-                                className={`border-b border-gray-100 ${
-                                  item.isStopword ? 'text-gray-400' : ''
-                                }`}
-                              >
-                                <td className={`p-2 font-medium ${
-                                  item.isStopword ? '' : getDensityColor(item.density)
-                                }`}>
-                                  {item.keyword}
-                                </td>
-                                <td className={`p-2 ${
-                                  item.isStopword ? '' : getDensityColor(item.density)
-                                }`}>
-                                  {item.density}%
-                                </td>
-                                <td className={`p-2 ${
-                                  item.isStopword ? '' : getDensityColor(item.density)
-                                }`}>
-                                  <span className={`inline-block px-2 py-0.5 rounded font-medium ${
-                                    item.isStopword 
-                                      ? 'bg-gray-100 text-gray-500' 
-                                      : 'bg-blue-100 text-blue-800'
+                            allKeywords.map((item, index) => {
+                              const isHovered = hoveredKeyword === item.keyword.toLowerCase();
+                              const bgColor = isHovered && !item.isStopword
+                                ? (() => {
+                                    if (item.density < 1.8) return 'bg-blue-100';
+                                    if (item.density < 2.8) return 'bg-yellow-100';
+                                    if (item.density < 3.8) return 'bg-orange-100';
+                                    return 'bg-red-100';
+                                  })()
+                                : '';
+                              
+                              return (
+                                <tr
+                                  key={index}
+                                  className={`border-b border-gray-100 transition-colors cursor-pointer ${
+                                    item.isStopword ? 'text-gray-400' : ''
+                                  } ${bgColor}`}
+                                  onMouseEnter={() => !item.isStopword && setHoveredKeyword(item.keyword.toLowerCase())}
+                                  onMouseLeave={() => setHoveredKeyword(null)}
+                                >
+                                  <td className={`p-2 font-medium ${
+                                    item.isStopword ? '' : getDensityColor(item.density)
                                   }`}>
-                                    {item.timesUsed}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
+                                    {item.keyword}
+                                  </td>
+                                  <td className={`p-2 ${
+                                    item.isStopword ? '' : getDensityColor(item.density)
+                                  }`}>
+                                    {item.density}%
+                                  </td>
+                                  <td className={`p-2`}>
+                                    <span className={`inline-block px-2 py-0.5 rounded font-medium ${
+                                      item.isStopword 
+                                        ? 'bg-gray-100 text-gray-500' 
+                                        : 'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {item.timesUsed}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           );
                         })()}
                       </tbody>
